@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickHelp.com - First Aid at Your Fingertips</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <style>
+        :root {
+            --primary-blue: #1a73e8;
+            --light-blue: #e8f0fe;
+            --action-orange: #ff9100;
+            --light-orange: #ffecd1;
+            --dark-gray: #5f6368;
+            --light-gray: #f8f9fa;
+            --border-gray: #dadce0;
+            --emergency-red: #ea4335;
+            --light-red: #fce8e6;
+        }
+        
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif; 
+        }
+        
+        body { 
+            background-color: #f5f7fa; 
+            color: var(--dark-gray); 
+            line-height: 1.6; 
+        }
+        
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 20px; 
+        }
+        
+        header { 
+            text-align: center; 
+            padding: 20px 0; 
+            margin-bottom: 30px; 
+        }
+        
+        .logo { 
+            font-size: 28px; 
+            font-weight: 700; 
+            color: var(--primary-blue); 
+            margin-bottom: 10px; 
+        }
+        
+        .tagline { 
+            font-size: 18px; 
+            color: var(--dark-gray); 
+        }
+        
+        .app-container { 
+            background: white; 
+            border-radius: 16px; 
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); 
+            overflow: hidden; 
+            margin-bottom: 30px; 
+        }
+        
+        .progress-bar { 
+            display: flex; 
+            background: var(--light-gray); 
+            padding: 15px 30px; 
+        }
+        
+        .progress-step { 
+            flex: 1; 
+            text-align: center; 
+            padding: 10px; 
+            font-weight: 600; 
+            position: relative; 
+        }
+        
+        .progress-step.active { 
+            color: var(--primary-blue); 
+        }
+        
+        .progress-step::after { 
+            content: "→"; 
+            position: absolute; 
+            right: -15px; 
+            top: 50%; 
+            transform: translateY(-50%); 
+            color: var(--dark-gray); 
+        }
+        
+        .progress-step:last-child::after { 
+            display: none; 
+        }
+        
+        .step-content { 
+            padding: 30px; 
+            min-height: 500px; 
+        }
+        
+        .step-title { 
+            font-size: 24px; 
+            color: var(--primary-blue); 
+            margin-bottom: 25px; 
+            text-align: center; 
+        }
+        
+        /* Body Diagram Styles */
+        .body-diagram-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            flex-direction: column; 
+        }
+        
+        .body-outline { 
+            width: 320px; 
+            height: 540px; 
+            position: relative; 
+            margin: 20px auto; 
+        }
+        
+        .body-part { 
+            fill: rgba(26, 115, 232, 0.05); 
+            stroke: #a2c3f0; 
+            stroke-width: 1.5px; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+        }
+
+        .body-group:hover .body-part { 
+            fill: var(--light-blue); 
+            stroke: var(--primary-blue); 
+        }
+        
+        .body-part.selected { 
+            fill: var(--light-orange); 
+            stroke: var(--action-orange); 
+            stroke-width: 2px; 
+        }
+        
+        /* Selection indicators */
+        .selection-label { 
+            font-size: 14px; 
+            fill: #dc2626; 
+            font-weight: 700; 
+        }
+        
+        .selection-label tspan { 
+            font-size: 14px; 
+            fill: #dc2626; 
+            font-weight: 700; 
+        }
+        
+        .selection-dot { 
+            fill: #dc2626; 
+            r: 3; 
+        }
+        
+        /* Private Parts Button */
+        .private-parts-btn { 
+            background: #dc2626; 
+            color: black; 
+            font-weight: bold; 
+            padding: 8px 16px; 
+            border: none; 
+            border-radius: 20px; 
+            cursor: pointer; 
+            margin-bottom: 20px; 
+            font-size: 14px; 
+            transition: all 0.2s ease; 
+        }
+        
+        .private-parts-btn:hover { 
+            background: #b91c1c; 
+        }
+        
+        .private-parts-btn.selected { 
+            background: var(--action-orange); 
+            color: white; 
+        }
+        
+        /* Injury selection */
+        .injury-options { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+            gap: 15px; 
+            margin: 30px 0; 
+        }
+        
+        .option-card { 
+            padding: 10px; 
+            border: 2px solid var(--border-gray); 
+            border-radius: 12px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: space-between; 
+        }
+        
+        .option-card:hover { 
+            border-color: var(--primary-blue); 
+            transform: translateY(-2px); 
+        }
+        
+        .option-card.selected { 
+            border-color: var(--action-orange); 
+            background: var(--light-orange); 
+        }
+        
+        .option-card img { 
+            width: 100%; 
+            height: 80px; 
+            object-fit: cover; 
+            border-radius: 8px; 
+            margin-bottom: 10px; 
+        }
+
+        .option-card div { 
+            font-size: 14px; 
+            font-weight: 600; 
+        }
+
+        /* Results section */
+        .instructions-wrapper { 
+            background: #2d3748; 
+            color: #f7fafc; 
+            border-radius: 12px; 
+            padding: 25px; 
+            margin: 25px 0; 
+            font-family: 'Courier New', Courier, monospace; 
+            min-height: 200px; 
+        }
+
+        .instructions-wrapper p { 
+            margin-bottom: 1em; 
+            white-space: pre-wrap; 
+        }
+
+        .cursor { 
+            display: inline-block; 
+            background-color: #f7fafc; 
+            width: 10px; 
+            animation: blink 1s infinite; 
+        }
+
+        @keyframes blink { 
+            0%, 100% { opacity: 1; } 
+            50% { opacity: 0; } 
+        }
+        
+        .emergency-alert { 
+            background: var(--light-red); 
+            border: 2px solid var(--emergency-red); 
+            color: #c53030; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 25px; 
+            text-align: center; 
+        }
+        
+        .emergency-alert h3 { 
+            color: var(--emergency-red); 
+            margin-bottom: 10px; 
+        }
+
+        .emergency-alert strong { 
+            font-size: 1.2em; 
+        }
+        
+        /* Navigation buttons */
+        .nav-buttons { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 20px 30px; 
+            border-top: 1px solid var(--border-gray); 
+        }
+        
+        button { 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+        }
+        
+        .btn-next { 
+            background: var(--primary-blue); 
+            color: white; 
+        }
+        
+        .btn-next:hover { 
+            background: #0d5bba; 
+        }
+        
+        .btn-back { 
+            background: var(--light-gray); 
+            color: var(--dark-gray); 
+        }
+        
+        .btn-back:hover { 
+            background: #e4e6e8; 
+        }
+        
+        button:disabled { 
+            opacity: 0.5; 
+            cursor: not-allowed; 
+        }
+        
+        /* Step containers */
+        .step { 
+            display: none; 
+        }
+        
+        .step.active { 
+            display: block; 
+        }
+
+        /* Map and Hospital List Styles */
+        #map-container { 
+            text-align: center; 
+            display: none; 
+            margin-top: 20px; 
+        }
+        
+        #map { 
+            height: 450px; 
+            width: 100%; 
+            margin-top: 20px; 
+            border-radius: 8px; 
+            border: 1px solid var(--border-gray); 
+            display: none; 
+        }
+        
+        #hospital-info-container { 
+            margin-top: 30px; 
+            text-align: left; 
+            max-height: 400px; 
+            overflow-y: auto; 
+            padding-right: 10px; 
+        }
+        
+        .hospital-card { 
+            background: var(--light-gray); 
+            border-radius: 8px; 
+            padding: 20px; 
+            margin-bottom: 15px; 
+            border-left: 5px solid var(--primary-blue); 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        }
+        
+        .hospital-card h3 { 
+            color: var(--primary-blue); 
+            margin-bottom: 8px; 
+            font-size: 1.1em; 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        
+        .hospital-card h3 span { 
+            background: var(--light-blue); 
+            color: var(--primary-blue); 
+            font-size: 0.8em; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+        }
+        
+        .hospital-card p { 
+            margin: 4px 0; 
+            font-size: 0.95em; 
+        }
+        .emergency-help-btn {
+    background: var(--emergency-red);
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+    padding: 20px 40px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(234, 67, 53, 0.4);
+    margin: 20px 0;
+}
+
+.emergency-help-btn:hover {
+    background: #c53030;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(234, 67, 53, 0.6);
+}
+
+.emergency-help-btn:active {
+    transform: translateY(0);
+}
+        
+        @media (max-width: 768px) {
+            .body-outline { 
+                width: 240px; 
+                height: 420px; 
+            }
+            
+            .injury-options { 
+                grid-template-columns: repeat(3, 1fr); 
+            }
+            
+            .step-content { 
+                padding: 20px; 
+            }
+            
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">QuickHelp.com</div>
+            <div class="tagline">Eliminating Panic, Providing Clarity in Injury</div>
+        </header>
+        
+        <div class="app-container">
+            <div class="progress-bar">
+                <div class="progress-step active" id="step1-indicator">1. Locate Injury</div>
+                <div class="progress-step" id="step2-indicator">2. Identify Injury</div>
+                <div class="progress-step" id="step3-indicator">3. Get Help</div>
+            </div>
+            
+            <div class="step-content">
+                <div class="step active" id="step1">
+                    <h2 class="step-title">Where does it hurt?</h2>
+                    <div class="body-diagram-container">
+                        <button class="private-parts-btn" id="private-parts-btn">Private Parts</button>
+                        <svg class="body-outline" viewBox="0 0 240 420" xmlns="http://www.w3.org/2000/svg">
+                            <title>Interactive Human Body Diagram</title>
+                            <desc>Click a body part to select the location of an injury.</desc>
+                            <g id="selection-indicators"></g>
+                            <g class="body-group" id="head"><ellipse cx="120" cy="45" rx="25" ry="32" class="body-part"/><circle cx="110" cy="40" r="3" fill="#333"/><circle cx="130" cy="40" r="3" fill="#333"/></g>
+                            <g class="body-group" id="neck"><path d="M 105 77 L 135 77 L 130 95 L 110 95 Z" class="body-part"/></g>
+                            <g class="body-group" id="chest"><path d="M 95 95 C 85 100, 85 130, 95 145 L 145 145 C 155 130, 155 100, 145 95 Z" class="body-part"/></g>
+                            <g class="body-group" id="abs"><path d="M 95 145 L 145 145 L 140 185 L 100 185 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-shoulder"><circle cx="75" cy="105" r="20" class="body-part"/></g>
+                            <g class="body-group" id="right-shoulder"><circle cx="165" cy="105" r="20" class="body-part"/></g>
+                            <g class="body-group" id="left-upper-arm"><path d="M 65 120 L 55 160 L 70 165 L 75 125 Z" class="body-part"/></g>
+                            <g class="body-group" id="right-upper-arm"><path d="M 175 120 L 185 160 L 170 165 L 165 125 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-elbow"><circle cx="60" cy="170" r="8" class="body-part"/></g>
+                            <g class="body-group" id="right-elbow"><circle cx="180" cy="170" r="8" class="body-part"/></g>
+                            <g class="body-group" id="left-forearm"><path d="M 55 175 L 45 215 L 60 220 L 65 180 Z" class="body-part"/></g>
+                            <g class="body-group" id="right-forearm"><path d="M 185 175 L 195 215 L 180 220 L 175 180 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-hand"><ellipse cx="50" cy="230" rx="10" ry="15" class="body-part"/><ellipse cx="42" cy="220" rx="2" ry="6" class="body-part"/><ellipse cx="46" cy="218" rx="2" ry="7" class="body-part"/><ellipse cx="50" cy="217" rx="2" ry="8" class="body-part"/><ellipse cx="54" cy="218" rx="2" ry="7" class="body-part"/><ellipse cx="58" cy="225" rx="2" ry="5" class="body-part"/></g>
+                            <g class="body-group" id="right-hand"><ellipse cx="190" cy="230" rx="10" ry="15" class="body-part"/><ellipse cx="198" cy="220" rx="2" ry="6" class="body-part"/><ellipse cx="194" cy="218" rx="2" ry="7" class="body-part"/><ellipse cx="190" cy="217" rx="2" ry="8" class="body-part"/><ellipse cx="186" cy="218" rx="2" ry="7" class="body-part"/><ellipse cx="182" cy="225" rx="2" ry="5" class="body-part"/></g>
+                            <g class="body-group" id="hips"><path d="M 100 185 L 140 185 L 135 215 L 105 215 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-upper-leg"><path d="M 105 215 L 90 290 L 105 295 L 115 220 Z" class="body-part"/></g>
+                            <g class="body-group" id="right-upper-leg"><path d="M 135 215 L 150 290 L 135 295 L 125 220 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-knee"><circle cx="95" cy="305" r="12" class="body-part"/></g>
+                            <g class="body-group" id="right-knee"><circle cx="145" cy="305" r="12" class="body-part"/></g>
+                            <g class="body-group" id="left-lower-leg"><path d="M 90 320 L 80 375 L 95 380 L 100 325 Z" class="body-part"/></g>
+                            <g class="body-group" id="right-lower-leg"><path d="M 150 320 L 160 375 L 145 380 L 140 325 Z" class="body-part"/></g>
+                            <g class="body-group" id="left-foot"><ellipse cx="75" cy="390" rx="18" ry="12" class="body-part"/></g>
+                            <g class="body-group" id="right-foot"><ellipse cx="165" cy="390" rx="18" ry="12" class="body-part"/></g>
+                        </svg>
+                        <p>Click on the specific body part where the injury is located</p>
+                    </div>
+                </div>
+                <div class="step" id="step2">
+    <h2 class="step-title">What does the injury look like?</h2>
+    
+    <!-- Emergency HELP ME button -->
+    <div style="text-align: center; margin: 20px 0;">
+        <button class="emergency-help-btn" id="emergency-help-btn">🚨 HELP ME 🚨</button>
+    </div>
+    
+    <div class="injury-options">
+        <div class="option-card" data-injury="dislocation"><img src="imgs/dislocation.jpg" alt="Dislocation injury"><div>Dislocation</div></div>
+        <div class="option-card" data-injury="fracture"><img src="imgs/fracture.jpg" alt="Fracture injury"><div>Fracture</div></div>
+        <div class="option-card" data-injury="sprain"><img src="imgs/sprain.jpg" alt="Sprain injury"><div>Sprain</div></div>
+        <div class="option-card" data-injury="strain"><img src="imgs/strain.jpg" alt="Strain injury"><div>Strain</div></div>
+        <div class="option-card" data-injury="tear"><img src="imgs/tear.png" alt="Torn ligament or muscle"><div>Tear</div></div>
+        <div class="option-card" data-injury="abrasion"><img src="imgs/Abrasion.jpg" alt="Abrasion or scrape"><div>Abrasion</div></div>
+        <div class="option-card" data-injury="avulsion"><img src="imgs/Avulsion.jpeg" alt="Avulsion injury"><div>Avulsion</div></div>
+        <div class="option-card" data-injury="blister"><img src="imgs/blister.jpeg" alt="Blister"><div>Blister</div></div>
+        <div class="option-card" data-injury="bruise"><img src="imgs/bruise.jpeg" alt="Bruise or contusion"><div>Bruise</div></div>
+        <div class="option-card" data-injury="burn"><img src="imgs/burn.jpeg" alt="Burn injury"><div>Burn</div></div>
+        <div class="option-card" data-injury="cut"><img src="imgs/cut.jpeg" alt="Cut or laceration"><div>Cut</div></div>
+        <div class="option-card" data-injury="gunshot"><img src="imgs/gunshot.jpg" alt="Gunshot wound"><div>Gunshot</div></div>
+        <div class="option-card" data-injury="puncture"><img src="imgs/puncture.jpeg" alt="Puncture wound"><div>Puncture</div></div>
+        <div class="option-card" data-injury="road_rash"><img src="imgs/roadrash.jpg" alt="Road rash"><div>Road Rash</div></div>
+        <div class="option-card" data-injury="scratch"><img src="imgs/scratch.jpeg" alt="Scratch"><div>Scratch</div></div>
+        <div class="option-card" data-injury="stab"><img src="imgs/stab.jpg" alt="Stab wound"><div>Stab Wound</div></div>
+        <div class="option-card" data-injury="ant_bite"><img src="imgs/antbite.jpeg" alt="Ant bite"><div>Ant Bite</div></div>
+        <div class="option-card" data-injury="bee_sting"><img src="imgs/beesting.jpeg" alt="Bee sting"><div>Bee Sting</div></div>
+    </div>
+</div>
+                
+                
+                <div class="step" id="step3">
+                    <h2 class="step-title">First Aid & Nearby Help</h2>
+                    <div id="instructions-container">
+                        <div class="instructions-wrapper">
+                            <p id="typed-instructions"></p>
+                        </div>
+                    </div>
+                    
+                    <div id="map-container">
+                        <button id="find-hospitals-btn" class="btn-next">Find Hospitals Near Me</button>
+                        <div id="map"></div>
+                        <div id="hospital-info-container"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="nav-buttons">
+                <button class="btn-back" id="back-button" disabled>Back</button>
+                <button class="btn-next" id="next-button" disabled>Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- STATE & UI ELEMENTS ---
+            const state = { currentStep: 1, bodyPart: null, injuryType: null };
+            const backButton = document.getElementById('back-button');
+            const nextButton = document.getElementById('next-button');
+            let map = null;
+            let allHospitals = []; // Stores all parsed hospital data from CSV
+
+            // --- DATA (Templates for instructions) ---
+            const bodyPartNames = { 
+                'head': 'Head', 'neck': 'Neck', 'chest': 'Chest', 'abs': 'Abs', 'hips': 'Hips', 
+                'left-shoulder': 'Left Shoulder', 'left-upper-arm': 'Left Upper Arm', 'left-elbow': 'Left Elbow', 
+                'left-forearm': 'Left Forearm', 'left-hand': 'Left Hand', 'right-shoulder': 'Right Shoulder', 
+                'right-upper-arm': 'Right Upper Arm', 'right-elbow': 'Right Elbow', 'right-forearm': 'Right Forearm', 
+                'right-hand': 'Right Hand', 'left-upper-leg': 'Left Upper Leg', 'left-knee': 'Left Knee', 
+                'left-lower-leg': 'Left Lower Leg', 'left-foot': 'Left Foot', 'right-upper-leg': 'Right Upper Leg', 
+                'right-knee': 'Right Knee', 'right-lower-leg': 'Right Lower Leg', 'right-foot': 'Right Foot', 
+                'private-parts': 'Private Parts' 
+            };
+            
+            const bodyPartCenters = { 
+                'head': { x: 120, y: 45 }, 'neck': { x: 120, y: 90 }, 'chest': { x: 120, y: 125 }, 
+                'abs': { x: 120, y: 168 }, 'hips': { x: 120, y: 203 }, 'left-shoulder': { x: 75, y: 105 }, 
+                'left-upper-arm': { x: 65, y: 145 }, 'left-elbow': { x: 60, y: 170 }, 'left-forearm': { x: 55, y: 195 }, 
+                'left-hand': { x: 50, y: 230 }, 'right-shoulder': { x: 165, y: 105 }, 'right-upper-arm': { x: 175, y: 145 }, 
+                'right-elbow': { x: 180, y: 170 }, 'right-forearm': { x: 185, y: 195 }, 'right-hand': { x: 190, y: 230 }, 
+                'left-upper-leg': { x: 100, y: 260 }, 'left-knee': { x: 95, y: 305 }, 'left-lower-leg': { x: 85, y: 350 }, 
+                'left-foot': { x: 75, y: 390 }, 'right-upper-leg': { x: 140, y: 260 }, 'right-knee': { x: 145, y: 305 }, 
+                'right-lower-leg': { x: 155, y: 350 }, 'right-foot': { x: 165, y: 390 } 
+            };
+            
+            const instructionTemplates = {
+                default: { 
+                    intro: ["For this type of situation, it's crucial to act calmly and quickly.", "Here are the recommended first aid steps for your situation.", "Please follow these instructions carefully to provide immediate care."], 
+                    steps: ["Ensure the area is safe before approaching the injured person.", "If possible, wash your hands with soap and water to prevent infection.", "Try to keep the person calm and comfortable.", "Examine the injury gently to assess its severity.", "If there is bleeding, apply firm, direct pressure with a clean cloth or bandage.", "Clean the wound with mild soap and running water if it's a minor scrape or cut.", "Cover the injury with a sterile dressing or clean cloth.", "Monitor the person's breathing and consciousness."], 
+                    warning: ["If the condition worsens, or if the person becomes dizzy or unresponsive, seek medical help immediately.", "Watch for signs of infection, such as increased redness, swelling, pus, or fever.", "Do not attempt to move someone with a suspected head, neck, or back injury unless they are in immediate danger."] 
+                },
+                cut: { 
+                    intro: ["Properly treating a cut is important to prevent infection and promote healing.", "A clean cut requires immediate and careful attention.", "Follow these steps to manage a cut or laceration."], 
+                    steps: ["First, stop the bleeding by applying direct pressure with a clean cloth or bandage for several minutes.", "Once bleeding has stopped, rinse the wound thoroughly with clean, cool water to remove any debris.", "Gently wash around the wound with soap, but try to avoid getting soap directly into the cut.", "Apply a thin layer of an antibiotic ointment to keep the surface moist and prevent infection.", "Cover the cut with a sterile bandage to keep it clean.", "Change the dressing at least once a day or whenever it becomes wet or dirty."], 
+                    warning: ["Seek medical attention if the cut is deep, gaping, or if you cannot stop the bleeding.", "If the cut was caused by a rusty or dirty object, a tetanus shot may be necessary.", "Watch for signs of infection like redness spreading from the wound, increased pain, or discharge."] 
+                },
+                burn: { 
+                    intro: ["Immediate treatment for burns can reduce pain and prevent further damage.", "Cooling the burn is the first and most important step.", "Here's how to care for a burn injury."], 
+                    steps: ["Immediately cool the burn by holding it under cool (not cold) running water for 10 to 15 minutes.", "Gently remove any jewelry or tight clothing from the burned area before it starts to swell.", "Do not break any blisters that form, as this can lead to infection.", "After cooling, apply a layer of aloe vera gel or a specialized burn cream to soothe the skin.", "Cover the burn loosely with a sterile non-stick bandage.", "If needed, take an over-the-counter pain reliever like ibuprofen or acetaminophen."], 
+                    warning: ["Seek immediate medical help for burns that are large, deep, or on the hands, feet, face, or genitals.", "Never use ice, butter, or oily remedies on a burn.", "Watch for signs of infection like increased pain, redness, and oozing."] 
+                },
+                sprain: { 
+                    intro: ["Managing a sprain involves the R.I.C.E. method to reduce swelling and pain.", "A sprain is an injury to a ligament. Here is the standard care procedure.", "Follow these steps to care for a suspected sprain."], 
+                    steps: ["Rest: Avoid putting weight on or using the injured joint.", "Ice: Apply an ice pack wrapped in a towel to the area for 15-20 minutes every 2-3 hours.", "Compression: Use an elastic compression bandage to wrap the injury to help reduce swelling. Don't wrap it too tightly.", "Elevation: Keep the injured limb elevated above the level of your heart as much as possible.", "Over-the-counter pain relievers can be used to manage pain and inflammation."], 
+                    warning: ["If you cannot put any weight on the joint, if it looks crooked, or if you feel numbness, seek medical attention immediately.", "If the pain and swelling do not improve after a couple of days, consult a doctor."] 
+                },
+                fracture: { 
+                    intro: ["A suspected fracture requires immediate medical attention and careful handling.", "The primary goal is to immobilize the injury and prevent further damage.", "If you suspect a broken bone, follow these emergency steps."], 
+                    steps: ["Do not attempt to straighten or move the injured limb. Keep it in the position you found it.", "Control any bleeding by applying pressure with a clean cloth, but not directly on the break if bone is protruding.", "Immobilize the area using a splint. You can use rolled-up newspapers or pieces of wood secured with tape or cloth.", "Apply a cold pack to the area to help limit swelling and relieve pain. Do not apply ice directly to the skin.", "Help the person into a comfortable position and encourage them to rest."], 
+                    warning: ["This is a medical emergency. Call for professional medical help immediately.", "Do not give the person anything to eat or drink, as they may need surgery.", "Watch for signs of shock, such as pale skin, rapid breathing, or dizziness."] 
+                }
+            };
+
+            // --- UI & NAVIGATION LOGIC ---
+            function updateUI() {
+                document.querySelectorAll('.step').forEach((step, index) => step.classList.toggle('active', index === state.currentStep - 1));
+                document.querySelectorAll('.progress-step').forEach((step, index) => step.classList.toggle('active', index < state.currentStep));
+                backButton.disabled = state.currentStep === 1;
+                
+                if (state.currentStep === 1) { 
+                    nextButton.disabled = !state.bodyPart; 
+                    nextButton.textContent = 'Next'; 
+                } else if (state.currentStep === 2) { 
+                    nextButton.disabled = !state.injuryType; 
+                    nextButton.textContent = 'Get Help'; 
+                } else { 
+                    nextButton.disabled = false; 
+                    nextButton.textContent = 'Start Over'; 
+                }
+            }
+
+            function goToNextStep() {
+                if (state.currentStep < 3) {
+                    state.currentStep++;
+                    if (state.currentStep === 3) generateAndShowInstructions();
+                    updateUI();
+                } else {
+                    resetApp();
+                }
+            }
+            
+            function goToPreviousStep() { 
+                if (state.currentStep > 1) { 
+                    state.currentStep--; 
+                    updateUI(); 
+                } 
+            }
+            
+            function resetApp() {
+                state.currentStep = 1;
+                state.bodyPart = null;
+                state.injuryType = null;
+                document.querySelectorAll('.body-part.selected, .private-parts-btn.selected, .option-card.selected').forEach(el => el.classList.remove('selected'));
+                document.getElementById('selection-indicators').innerHTML = '';
+                
+                // Reset Step 3 UI
+                const mapContainer = document.getElementById('map-container');
+                mapContainer.style.display = 'none';
+                document.getElementById('map').style.display = 'none';
+                document.getElementById('hospital-info-container').innerHTML = '';
+                const findButton = document.getElementById('find-hospitals-btn');
+                findButton.style.display = 'block';
+                findButton.textContent = 'Find Hospitals Near Me';
+                findButton.disabled = false;
+
+                if (map) { map.remove(); map = null; }
+                updateUI();
+            }
+
+            // --- INSTRUCTION GENERATION & TYPEWRITER ---
+            function generateAndShowInstructions() {
+    const instructionsContainer = document.getElementById('instructions-container');
+    instructionsContainer.innerHTML = `<div class="instructions-wrapper"><p id="typed-instructions"></p></div>`;
+    
+    const emergencyConditions = ['head', 'neck', 'chest', 'abs', 'gunshot', 'stab', 'fracture', 'dislocation', 'avulsion', 'tear', 'emergency'];
+    const isEmergency = emergencyConditions.includes(state.bodyPart) || emergencyConditions.includes(state.injuryType);
+
+    if (isEmergency) {
+        const emergencyHTML = `<div class="emergency-alert">
+            <h3>🚨 EMERGENCY 🚨</h3>
+            <p>This may be a serious injury. Call for help immediately.</p>
+            <p><strong>Emergency Services: 112 (All-in-One Emergency)</strong></p>
+            <p><strong>Ambulance: 102</strong></p>
+            <p><strong>State Helpline: 104</strong></p>
+            <p>Stay calm and follow these emergency instructions carefully.</p>
+        </div>`;
+        instructionsContainer.insertAdjacentHTML('afterbegin', emergencyHTML);
+    }
+    
+    // For emergency cases, show special instructions
+    if (state.injuryType === 'emergency') {
+        const emergencyText = "EMERGENCY SITUATION DETECTED\n\n" +
+            "You've indicated this is an emergency situation that doesn't fit standard categories.\n\n" +
+            "IMMEDIATE ACTIONS REQUIRED:\n" +
+            "- Call emergency services immediately: 112, 102, or 104\n" +
+            "- Do not move the injured person unless absolutely necessary\n" +
+            "- Check for responsiveness and breathing\n" +
+            "- Control any visible bleeding with direct pressure\n" +
+            "- Keep the person warm and comfortable\n" +
+            "- Do not give food or water\n\n" +
+            "CRITICAL REMINDERS:\n" +
+            "- Stay calm and reassure the injured person\n" +
+            "- Monitor breathing and consciousness continuously\n" +
+            "- Be prepared to perform CPR if trained and necessary\n" +
+            "- Have someone wait to guide emergency services to the location";
+        
+        typewriterEffect(document.getElementById('typed-instructions'), emergencyText);
+        return;
+    }
+    
+    const templateKey = Object.keys(instructionTemplates).includes(state.injuryType) ? state.injuryType : 'default';
+    const template = instructionTemplates[templateKey];
+    
+    let fullText = "Analyzing inputs...\n\n" + 
+        template.intro[Math.floor(Math.random() * template.intro.length)] + 
+        "\n\nRECOMMENDED ACTIONS:\n";
+    
+    const shuffledSteps = [...template.steps].sort(() => 0.5 - Math.random());
+    fullText += shuffledSteps.slice(0, 3).map(step => `- ${step}`).join("\n");
+    fullText += "\n\nIMPORTANT:\n" + 
+        template.warning[Math.floor(Math.random() * template.warning.length)];
+    
+    typewriterEffect(document.getElementById('typed-instructions'), fullText);
+}
+
+            function typewriterEffect(element, text) {
+                let i = 0;
+                element.innerHTML = "";
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
+                cursor.innerHTML = '&nbsp;';
+                element.appendChild(cursor);
+                
+                const typingInterval = setInterval(() => {
+                    if (i < text.length) {
+                        element.insertBefore(document.createTextNode(text.charAt(i)), cursor);
+                        i++;
+                    } else {
+                        clearInterval(typingInterval);
+                        cursor.style.display = 'none';
+                        document.getElementById('map-container').style.display = 'block';
+                    }
+                }, 10);
+            }
+            
+            // --- SELECTION INDICATOR ---
+            function createSelectionIndicator(partId) {
+                const selectionIndicators = document.getElementById('selection-indicators');
+                selectionIndicators.innerHTML = '';
+                const center = bodyPartCenters[partId];
+                if (!center) return;
+                
+                const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                dot.setAttribute('cx', center.x);
+                dot.setAttribute('cy', center.y);
+                dot.classList.add('selection-dot');
+                
+                let labelX, labelY;
+                const isLeftSide = partId.includes('left');
+                labelX = isLeftSide ? 15 : 225;
+                labelY = center.y - 20;
+                
+                if (partId.includes('shoulder')) labelY = center.y - 40;
+                if (partId.includes('hand')) labelY = center.y + 40;
+                
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', labelX);
+                label.setAttribute('y', labelY);
+                label.classList.add('selection-label');
+                label.setAttribute('text-anchor', isLeftSide ? 'start' : 'end');
+                
+                bodyPartNames[partId].split(' ').forEach((lineText, index) => {
+                    const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+                    tspan.setAttribute('x', labelX);
+                    tspan.setAttribute('dy', index === 0 ? 0 : '1.4em');
+                    tspan.textContent = lineText;
+                    label.appendChild(tspan);
+                });
+                
+                selectionIndicators.appendChild(dot);
+                selectionIndicators.appendChild(label);
+            }
+
+            // --- STEP 3: MAP & HOSPITAL SEARCH LOGIC ---
+            async function findNearbyHospitals() {
+                const findButton = document.getElementById('find-hospitals-btn');
+                findButton.textContent = 'Locating...';
+                findButton.disabled = true;
+
+                if (allHospitals.length === 0) {
+                    alert('Hospital data is still loading or failed to load. Please try again in a moment.');
+                    findButton.textContent = 'Find Hospitals Near Me';
+                    findButton.disabled = false;
+                    return;
+                }
+
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+                    });
+                    
+                    const userLat = position.coords.latitude;
+                    const userLon = position.coords.longitude;
+                    
+                    const hospitalsWithDistance = allHospitals.map(hospital => ({
+                        ...hospital,
+                        distance: getDistance(userLat, userLon, hospital.latitude, hospital.longitude)
+                    }));
+                    
+                    const nearbyHospitals = hospitalsWithDistance.filter(h => h.distance <= 120);
+                    nearbyHospitals.sort((a, b) => a.distance - b.distance);
+
+                    document.getElementById('map').style.display = 'block';
+                    setupMapAndMarkers(userLat, userLon, nearbyHospitals);
+                    updateInfoList(nearbyHospitals);
+
+                    findButton.style.display = 'none';
+
+                } catch (error) {
+                    alert(`Could not get your location. Please ensure location services are enabled.\nError: ${error.message}`);
+                    findButton.textContent = 'Find Hospitals Near Me';
+                    findButton.disabled = false;
+                }
+            }
+
+            function setupMapAndMarkers(userLat, userLon, hospitals) {
+                if (map) map.remove();
+                map = L.map('map').setView([userLat, userLon], 10);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+
+                L.marker([userLat, userLon], { 
+                    icon: L.icon({ 
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', 
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', 
+                        iconSize: [25, 41], 
+                        iconAnchor: [12, 41], 
+                        popupAnchor: [1, -34], 
+                        shadowSize: [41, 41] 
+                    })
+                })
+                .addTo(map)
+                .bindPopup('<b>Your Location</b>').openPopup();
+
+                hospitals.forEach(hospital => {
+                    L.marker([hospital.latitude, hospital.longitude])
+                        .addTo(map)
+                        .bindPopup(`<b>${hospital.name}</b><br>${hospital.fullAddress}`);
+                });
+            }
+
+            function updateInfoList(hospitals) {
+                const infoContainer = document.getElementById('hospital-info-container');
+                if (hospitals.length === 0) {
+                    infoContainer.innerHTML = '<p>No hospitals found within a 120km radius.</p>';
+                    return;
+                }
+                
+                const hospitalCards = hospitals.map(h => `
+                    <div class="hospital-card">
+                        <h3>${h.name} <span>${h.distance.toFixed(1)} km away</span></h3>
+                        <p><strong>Address:</strong> ${h.fullAddress}</p>
+                    </div>
+                `).join('');
+                
+                infoContainer.innerHTML = hospitalCards;
+            }
+
+            // --- DATA LOADING & HELPER FUNCTIONS ---
+            function preLoadHospitalData() {
+                Papa.parse('hospitals.csv', {
+                    download: true, 
+                    header: true, 
+                    skipEmptyLines: true,
+                    complete: (results) => { 
+                        allHospitals = processRawCsvData(results.data); 
+                        console.log(`${allHospitals.length} hospitals loaded.`); 
+                    },
+                    error: (err) => { 
+                        console.error("Error loading hospitals.csv:", err); 
+                        alert("CRITICAL ERROR: Could not load 'hospitals.csv'. Please ensure the file is in the same directory as this HTML file."); 
+                    }
+                });
+            }
+
+            function processRawCsvData(data) {
+                const COLUMNS = { 
+                    name: 'Hospital_Name', 
+                    coordinates: 'Location_Coordinates', 
+                    location: 'Location', 
+                    addressLine: 'Address_Original_First_Line', 
+                    state: 'State', 
+                    district: 'District' 
+                };
+                
+                const processed = [];
+                data.forEach(row => {
+                    const coordStr = row[COLUMNS.coordinates];
+                    if (coordStr) {
+                        const parts = coordStr.split(',');
+                        if (parts.length === 2) {
+                            const lat = parseFloat(parts[0].trim());
+                            const lon = parseFloat(parts[1].trim());
+                            if (!isNaN(lat) && !isNaN(lon)) {
+                                processed.push({
+                                    name: row[COLUMNS.name] || 'N/A',
+                                    latitude: lat,
+                                    longitude: lon,
+                                    fullAddress: [row[COLUMNS.addressLine], row[COLUMNS.location], row[COLUMNS.district], row[COLUMNS.state]].filter(Boolean).join(', ')
+                                });
+                            }
+                        }
+                    }
+                });
+                return processed;
+            }
+
+            function getDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371; // Earth's radius in km
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + 
+                          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return R * c;
+            }
+
+            // --- EVENT LISTENER SETUP & INITIALIZATION ---
+            function setupEventListeners() {
+                nextButton.addEventListener('click', goToNextStep);
+                backButton.addEventListener('click', goToPreviousStep);
+                document.getElementById('find-hospitals-btn').addEventListener('click', findNearbyHospitals);
+                
+                document.querySelectorAll('.body-group').forEach(group => { 
+                    group.addEventListener('click', function() { 
+                        document.querySelectorAll('.body-part.selected, .private-parts-btn.selected').forEach(el => el.classList.remove('selected')); 
+                        this.querySelector('.body-part').classList.add('selected'); 
+                        state.bodyPart = this.id; 
+                        createSelectionIndicator(state.bodyPart); 
+                        nextButton.disabled = false; 
+                    }); 
+                });
+               
+                
+                document.getElementById('private-parts-btn').addEventListener('click', function() { 
+                    document.querySelectorAll('.body-part.selected').forEach(p => p.classList.remove('selected')); 
+                    this.classList.add('selected'); 
+                    state.bodyPart = 'private-parts'; 
+                    document.getElementById('selection-indicators').innerHTML = ''; 
+                    nextButton.disabled = false; 
+                });
+                
+                document.querySelectorAll('.option-card').forEach(option => { 
+                    option.addEventListener('click', function() { 
+                        document.querySelectorAll('.option-card.selected').forEach(o => o.classList.remove('selected')); 
+                        this.classList.add('selected'); 
+                        state.injuryType = this.dataset.injury; 
+                        nextButton.disabled = false; 
+                    }); 
+                });
+            }
+            // Add this to your setupEventListeners function:
+document.getElementById('emergency-help-btn').addEventListener('click', function() {
+    state.injuryType = 'emergency';
+    goToNextStep();
+});
+
+            // --- INITIALIZE ---
+            updateUI();
+            setupEventListeners();
+            preLoadHospitalData(); // Start loading CSV in the background right away
+        });
+    </script>
+</body>
+</html>
