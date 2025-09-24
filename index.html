@@ -400,7 +400,20 @@
 .emergency-help-btn:active {
     transform: translateY(0);
 }
-        
+        .body-part, .option-card {
+    transform: translateZ(0); /* GPU acceleration */
+    backface-visibility: hidden;
+}
+
+/* Reduce initial load size */
+.step:not(.active) {
+    display: none !important;
+}
+
+/* Optimize animations */
+.body-part, .option-card {
+    transition: all 0.15s ease; /* Faster transitions */
+}
         @media (max-width: 768px) {
             .body-outline { 
                 width: 240px; 
@@ -509,6 +522,7 @@
                     
                     <div id="map-container">
                         <button id="find-hospitals-btn" class="btn-next">Find Hospitals Near Me</button>
+                        <div id="load-status" style="display: none; text-align: center; margin: 10px 0; color: #666; font-size: 14px;"></div>
                         <div id="map"></div>
                         <div id="hospital-info-container"></div>
                     </div>
@@ -697,23 +711,20 @@
 }
 
             function typewriterEffect(element, text) {
-                let i = 0;
-                element.innerHTML = "";
-                const cursor = document.createElement('span');
-                cursor.className = 'cursor';
-                cursor.innerHTML = '&nbsp;';
-                element.appendChild(cursor);
-                
-                const typingInterval = setInterval(() => {
-                    if (i < text.length) {
-                        element.insertBefore(document.createTextNode(text.charAt(i)), cursor);
-                        i++;
-                    } else {
-                        clearInterval(typingInterval);
-                        cursor.style.display = 'none';
-                        document.getElementById('map-container').style.display = 'block';
-                    }
-                }, 10);
+    element.innerHTML = "";
+    let i = 0;
+    
+    function type() {
+        if (i < text.length) {
+            element.innerHTML = text.substring(0, i + 1) + '<span class="cursor">&nbsp;</span>';
+            i++;
+            setTimeout(type, 5); // Faster typing speed
+        } else {
+            element.innerHTML = text; // Remove cursor when done
+            document.getElementById('map-container').style.display = 'block';
+        }
+    }
+    type();
             }
             
             // --- SELECTION INDICATOR ---
@@ -756,44 +767,52 @@
 
             // --- STEP 3: MAP & HOSPITAL SEARCH LOGIC ---
             async function findNearbyHospitals() {
-                const findButton = document.getElementById('find-hospitals-btn');
-                findButton.textContent = 'Locating...';
-                findButton.disabled = true;
+    try {
+        // FIRST load hospitals (this is the key change!)
+        await ensureHospitalsLoaded();
+        
+        const findButton = document.getElementById('find-hospitals-btn');
+        findButton.textContent = 'Getting your location...';
+        
+        // THEN get location
+        const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+                enableHighAccuracy: false,  // Faster!
+                timeout: 15000 
+            });
+        });
+        
+        const userLat = position.coords.latitude;
+        const userLon = position.coords.longitude;
+        
+        findButton.textContent = 'Finding nearby hospitals...';
+        
+        const hospitalsWithDistance = allHospitals.map(hospital => ({
+            ...hospital,
+            distance: getDistance(userLat, userLon, hospital.latitude, hospital.longitude)
+        }));
+        
+        const nearbyHospitals = hospitalsWithDistance.filter(h => h.distance <= 120);
+        nearbyHospitals.sort((a, b) => a.distance - b.distance);
 
-                if (allHospitals.length === 0) {
-                    alert('Hospital data is still loading or failed to load. Please try again in a moment.');
-                    findButton.textContent = 'Find Hospitals Near Me';
-                    findButton.disabled = false;
-                    return;
-                }
+        document.getElementById('map').style.display = 'block';
+        setupMapAndMarkers(userLat, userLon, nearbyHospitals);
+        updateInfoList(nearbyHospitals);
 
-                try {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
-                    });
-                    
-                    const userLat = position.coords.latitude;
-                    const userLon = position.coords.longitude;
-                    
-                    const hospitalsWithDistance = allHospitals.map(hospital => ({
-                        ...hospital,
-                        distance: getDistance(userLat, userLon, hospital.latitude, hospital.longitude)
-                    }));
-                    
-                    const nearbyHospitals = hospitalsWithDistance.filter(h => h.distance <= 120);
-                    nearbyHospitals.sort((a, b) => a.distance - b.distance);
+        findButton.style.display = 'none';
 
-                    document.getElementById('map').style.display = 'block';
-                    setupMapAndMarkers(userLat, userLon, nearbyHospitals);
-                    updateInfoList(nearbyHospitals);
-
-                    findButton.style.display = 'none';
-
-                } catch (error) {
-                    alert(`Could not get your location. Please ensure location services are enabled.\nError: ${error.message}`);
-                    findButton.textContent = 'Find Hospitals Near Me';
-                    findButton.disabled = false;
-                }
+    } catch (error) {
+        console.error('Error:', error);
+        const findButton = document.getElementById('find-hospitals-btn');
+        findButton.textContent = 'Find Hospitals Near Me';
+        findButton.disabled = false;
+        
+        if (error.message.includes('hospital data')) {
+            alert('Failed to load hospital data. Please check your connection and try again.');
+        } else {
+            alert(`Could not get your location. Please ensure location services are enabled.\nError: ${error.message}`);
+        }
+    }
             }
 
             function setupMapAndMarkers(userLat, userLon, hospitals) {
@@ -841,52 +860,75 @@
             }
 
             // --- DATA LOADING & HELPER FUNCTIONS ---
-            function preLoadHospitalData() {
-                Papa.parse('hospitals.csv', {
-                    download: true, 
-                    header: true, 
-                    skipEmptyLines: true,
-                    complete: (results) => { 
-                        allHospitals = processRawCsvData(results.data); 
-                        console.log(`${allHospitals.length} hospitals loaded.`); 
-                    },
-                    error: (err) => { 
-                        console.error("Error loading hospitals.csv:", err); 
-                        alert("CRITICAL ERROR: Could not load 'hospitals.csv'. Please ensure the file is in the same directory as this HTML file."); 
-                    }
-                });
+            let hospitalsLoaded = false;
+let hospitalsLoadPromise = null;
+
+function ensureHospitalsLoaded() {
+    if (hospitalsLoaded) return Promise.resolve();
+    
+    if (!hospitalsLoadPromise) {
+        hospitalsLoadPromise = new Promise((resolve, reject) => {
+            // Show loading state
+            const findButton = document.getElementById('find-hospitals-btn');
+            if (findButton) {
+                findButton.textContent = 'Loading hospital data...';
+                findButton.disabled = true;
             }
+            
+            Papa.parse('hospitals.csv', {
+                download: true, 
+                header: true, 
+                skipEmptyLines: true,
+                worker: true,
+                complete: (results) => { 
+                    allHospitals = processRawCsvData(results.data); 
+                    hospitalsLoaded = true;
+                    console.log(`${allHospitals.length} hospitals loaded.`);
+                    resolve();
+                },
+                error: (err) => { 
+                    console.error("Error loading hospitals.csv:", err);
+                    reject(err);
+                }
+            });
+        });
+    }
+    
+    return hospitalsLoadPromise;
+                        }
 
             function processRawCsvData(data) {
-                const COLUMNS = { 
-                    name: 'Hospital_Name', 
-                    coordinates: 'Location_Coordinates', 
-                    location: 'Location', 
-                    addressLine: 'Address_Original_First_Line', 
-                    state: 'State', 
-                    district: 'District' 
-                };
-                
-                const processed = [];
-                data.forEach(row => {
-                    const coordStr = row[COLUMNS.coordinates];
-                    if (coordStr) {
-                        const parts = coordStr.split(',');
-                        if (parts.length === 2) {
-                            const lat = parseFloat(parts[0].trim());
-                            const lon = parseFloat(parts[1].trim());
-                            if (!isNaN(lat) && !isNaN(lon)) {
-                                processed.push({
-                                    name: row[COLUMNS.name] || 'N/A',
-                                    latitude: lat,
-                                    longitude: lon,
-                                    fullAddress: [row[COLUMNS.addressLine], row[COLUMNS.location], row[COLUMNS.district], row[COLUMNS.state]].filter(Boolean).join(', ')
-                                });
-                            }
-                        }
-                    }
-                });
-                return processed;
+    const processed = [];
+    const seenCoords = new Set(); // Avoid duplicates
+    
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const coordStr = row.Location_Coordinates;
+        
+        if (!coordStr) continue;
+        
+        const parts = coordStr.split(',');
+        if (parts.length !== 2) continue;
+        
+        const lat = parseFloat(parts[0].trim());
+        const lon = parseFloat(parts[1].trim());
+        if (isNaN(lat) || isNaN(lon)) continue;
+        
+        // Deduplicate by coordinates
+        const coordKey = `${lat},${lon}`;
+        if (seenCoords.has(coordKey)) continue;
+        seenCoords.add(coordKey);
+        
+        processed.push({
+            name: (row.Hospital_Name || 'N/A').substring(0, 60), // Limit length
+            latitude: lat,
+            longitude: lon,
+            fullAddress: [row.Address_Original_First_Line, row.Location, row.District, row.State]
+                .filter(Boolean).join(', ').substring(0, 150) // Limit address length
+        });
+    }
+    
+    return processed;
             }
 
             function getDistance(lat1, lon1, lat2, lon2) {
@@ -943,7 +985,7 @@ document.getElementById('emergency-help-btn').addEventListener('click', function
             // --- INITIALIZE ---
             updateUI();
             setupEventListeners();
-            preLoadHospitalData(); // Start loading CSV in the background right away
+        
         });
     </script>
 </body>
